@@ -1,4 +1,4 @@
-# Amazon Web Scraper & Analyzer
+# Amazon Data Scraper
 
 A resilient, testable web scraping pipeline for Amazon search results and
 product pages, built with the **`scrapling`** framework. It searches for a
@@ -279,10 +279,3 @@ required or used in the test suite.
   site, and consider official APIs (e.g. Amazon's Product Advertising
   API) for real applications.
 
-## Possible extensions (good "next steps" talking points in an interview)
-
-- Swap SQLite for Postgres and containerize with Docker Compose.
-- Add Selenium/Playwright fallback for JS-rendered edge cases.
-- Schedule recurring scrapes (cron / Airflow) to track price history over
-  time and chart trends.
-- Add a lightweight Flask/FastAPI endpoint to serve the analysis report.
