@@ -6,8 +6,6 @@ keyword, visits each result's product page for full detail, stores
 everything in SQLite (with CSV export), and generates an analysis
 report with charts.
 
-🔗 **Live Demo:** [View Live Streamlit App (Placeholder - Replace with your deployment link)](https://your-demo-link.streamlit.app/)
-
 ## How It Works: Step-by-Step
 
 This project takes a user's search query, gathers detailed data, saves it safely, and produces visual reports. Here is the visual flow and step-by-step breakdown of how data travels through the system:
@@ -380,11 +378,3 @@ required or used in the test suite.
   commercial use. Check current ToS and `robots.txt` before scraping any
   site, and consider official APIs (e.g. Amazon's Product Advertising
   API) for real applications.
-
-## Possible extensions (good "next steps" talking points in an interview)
-
-- Swap SQLite for Postgres and containerize with Docker Compose.
-- Add Selenium/Playwright fallback for JS-rendered edge cases.
-- Schedule recurring scrapes (cron / Airflow) to track price history over
-  time and chart trends.
-- Add a lightweight Flask/FastAPI endpoint to serve the analysis report.
