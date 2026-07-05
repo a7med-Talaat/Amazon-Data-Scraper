@@ -6,7 +6,7 @@ keyword, visits each result's product page for full detail, stores
 everything in SQLite (with CSV export), and generates an analysis
 report with charts.
 
-🔗 **Live Demo:** [View Live Streamlit App (Placeholder - Replace with your deployment link)](https://your-demo-link.streamlit.app/)
+🔗 **Live Demo:** https://amazon-data-scraper.streamlit.app/
 
 ## How It Works: Step-by-Step
 
@@ -80,29 +80,26 @@ For example, when you run: `python cli.py run --keyword "wireless mouse" --max-r
 
 ---
 
-#### 3. 💾 Step 3: SQLite Upsert & CSV Export
-* **What happens:** The merged search + detail page data is sent to the database.
-* **Upsert logic:** If a product with the same ASIN was previously scraped, it updates the record with any new info. If it's new, it creates a new record.
-* **CSV Export:** The program immediately updates and saves a user-friendly spreadsheet: `output/products.csv`.
-* **The output:** An updated database (`output/amazon_data.db`) and a CSV spreadsheet.
+#### 3. 💾 Step 3: Storage & Isolation
+* **Web App Mode:** The scraped data is stored directly in **Streamlit's `st.session_state`** (completely isolated in-memory per browser tab). This ensures different concurrent users online never see each other's data.
+* **CLI Mode:** Data is stored locally in an SQLite database file (`output/amazon_data.db`) using upsert logic.
+* **CSV Export:** Streamlit offers a direct in-memory CSV download button, while the CLI saves a clean spreadsheet directly to `output/products.csv`.
 
 ---
 
-#### 4. 📊 Step 4: Pandas Calculations & Charts
-* **What happens:** The analysis engine takes over. Pandas reads the database records and calculates summary statistics:
-  * Average price, median price, price range (minimum and maximum).
-  * Average product rating.
-  * Total reviews across all scraped products.
+#### 4. 📊 Step 4: Calculations & Charts
+* **Calculations:** Pandas reads the scraped dataset and calculates summary statistics (mean, median, range, ratings, total review count).
 * **Visualization:** Matplotlib creates three visual insights:
-  1. `price_distribution.png` (Histogram showing the range and concentration of prices)
-  2. `rating_vs_price.png` (Scatter plot showing if higher prices lead to better ratings)
-  3. `top_reviewed.png` (Bar chart displaying the top 10 most popular products)
+  1. Price spread histogram
+  2. Ratings vs. Price scatter plot
+  3. Top 10 most-reviewed products bar chart
+* **Rendering:** The Web App renders these figures dynamically directly into the browser viewport via `st.pyplot(fig)`. The CLI exports them as physical `.png` files under `output/report/`.
 
 ---
 
-#### 5. 📝 Step 5: Final Report Generation
-* **What happens:** The stats and charts are packaged together.
-* **The output:** A clean markdown report is written to `output/report/report.md`. This report compiles all the numerical stats and embeds the charts for quick viewing.
+#### 5. 📝 Step 5: Report Generation
+* **Web App Mode:** The markdown report is constructed as an in-memory string and formatted directly on the dashboard tab using `st.markdown()`.
+* **CLI Mode:** A static markdown document summarizing all stats and linking the charts is written to `output/report/report.md`.
 
 ---
 
@@ -148,16 +145,17 @@ Here is a breakdown of which library is used in which area of the project, and w
 * **Why this library:** It is the industry standard for fast, high-performance data manipulation in Python. It simplifies loading database queries into dataframes, running calculations (mean, median, ranges), and cleaning null values.
 
 ### 5. Plotting & Visualizations: `matplotlib`
-* **Where it is used:** Chart rendering (`price_distribution.png`, `rating_vs_price.png`, `top_reviewed.png`).
-* **Why this library:** Matplotlib allows headless rendering (`matplotlib.use("Agg")` backend) which creates high-quality PNG charts silently in the background without needing a graphic display window (server-friendly).
+* **Where it is used:** Generating visual plots.
+* **Why this library:** It allows headless rendering (`matplotlib.use("Agg")` backend). The Web App displays figures directly in the browser using `st.pyplot()`, while the CLI exports them as PNG images, both without requiring a graphics server.
 
 ### 6. Relational Storage: `sqlite3`
-* **Where it is used:** Saving scraped data.
-* **Why this library:** SQLite is serverless, file-based, and built into the Python standard library. It requires zero configuration, yet supports robust SQL operations like transaction safety and `ON CONFLICT DO UPDATE` (upserting) to prevent duplicate product records.
+* **Where it is used:** Saving scraped data (CLI Mode).
+* **Why this library:** SQLite is serverless and built into Python. It is used in CLI Mode for local data saving and database querying, while the Web App runs entirely in-memory using Streamlit's isolated session state to ensure data isolation between different online visitors.
 
 ### 7. Interactive Web UI: `streamlit`
 * **Where it is used:** Serving the dashboard UI (`app.py`).
-* **Why this library:** Streamlit allows writing pure-Python web interfaces that run in real-time, completely replacing complex HTML/JS/CSS frontend development with quick, clean reactive widgets (sliders, inputs, dataframes, images, tabs).
+* **Why this library:** Streamlit allows writing pure-Python web interfaces. We leverage its **`st.session_state`** to implement 100% session-level isolation, ensuring each visitor has their own private scraped dataset and never sees search queries executed by other online users.
+
 
 ## Architecture
 
@@ -278,4 +276,3 @@ required or used in the test suite.
   commercial use. Check current ToS and `robots.txt` before scraping any
   site, and consider official APIs (e.g. Amazon's Product Advertising
   API) for real applications.
-
