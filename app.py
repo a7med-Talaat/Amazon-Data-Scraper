@@ -6,7 +6,6 @@ import json
 import random
 import time
 from urllib.parse import quote_plus
-import sqlite3
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -60,34 +59,8 @@ max_results = st.sidebar.slider("🔢 Limit Scraped Results", min_value=1, max_v
 
 run_button = st.sidebar.button("🚀 Run Scraper Pipeline", type="primary", width="stretch")
 
-db_path = "output/amazon_data.db"
-csv_path = "output/products.csv"
-report_dir = "output/report"
-
-
-def init_db():
-    os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS products (
-        asin TEXT PRIMARY KEY,
-        title TEXT,
-        price REAL,
-        rating REAL,
-        review_count INTEGER,
-        availability TEXT,
-        url TEXT,
-        image_url TEXT,
-        bullet_points TEXT,
-        keyword TEXT,
-        scraped_at TEXT
-    );
-    """)
-    conn.commit()
-    conn.close()
-
-
-init_db()
+if 'scraped_data' not in st.session_state:
+    st.session_state.scraped_data = []
 
 
 def clean_text(text):
@@ -215,99 +188,47 @@ def parse_product_page(html, asin):
 
 
 def save_products(products, kw):
-    conn = sqlite3.connect(db_path)
     now = pd.Timestamp.now().isoformat()
-    rows = []
-    for p in products:
-        if p.get("asin"):
-            rows.append((
-                p.get("asin"), p.get("title"), p.get("price"), p.get("rating"),
-                p.get("review_count"), p.get("availability"), p.get("url"),
-                p.get("image_url"), json.dumps(p.get("bullet_points") or []),
-                kw, now
-            ))
+    current_data = {p['asin']: p for p in st.session_state.scraped_data if p.get('asin')}
 
-    conn.executemany("""
-    INSERT INTO products (asin, title, price, rating, review_count, availability, url, image_url, bullet_points, keyword, scraped_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(asin) DO UPDATE SET
-        title=excluded.title, price=excluded.price, rating=excluded.rating,
-        review_count=excluded.review_count, availability=excluded.availability,
-        url=excluded.url, image_url=excluded.image_url, bullet_points=excluded.bullet_points,
-        keyword=excluded.keyword, scraped_at=excluded.scraped_at;
-    """, rows)
-    conn.commit()
-    conn.close()
+    for p in products:
+        asin = p.get('asin')
+        if asin:
+            p['keyword'] = kw
+            p['scraped_at'] = now
+            if asin in current_data:
+                current_data[asin].update({k: v for k, v in p.items() if v is not None})
+            else:
+                current_data[asin] = p
+
+    st.session_state.scraped_data = list(current_data.values())
 
 
 def load_db_data():
-    if not os.path.exists(db_path):
+    if not st.session_state.scraped_data:
         return None
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM products")
-    cols = [d[0] for d in cur.description]
-    rows = cur.fetchall()
-    conn.close()
-    if not rows:
-        return None
-    df = pd.DataFrame(rows, columns=cols)
-    if 'bullet_points' in df.columns:
-        df['bullet_points'] = df['bullet_points'].apply(lambda x: json.loads(x) if x else [])
+    df = pd.DataFrame(st.session_state.scraped_data)
     return df
 
 
-def analyze_and_report(df):
-    os.makedirs(report_dir, exist_ok=True)
+def generate_report_content(df):
     stats = {"n_products": len(df)}
     for col in ("price", "rating", "review_count"):
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    if df["price"].notna().any():
+    if "price" in df.columns and df["price"].notna().any():
         stats["price_mean"] = round(df["price"].mean(), 2)
         stats["price_median"] = round(df["price"].median(), 2)
         stats["price_min"] = round(df["price"].min(), 2)
         stats["price_max"] = round(df["price"].max(), 2)
-    if df["rating"].notna().any():
+    if "rating" in df.columns and df["rating"].notna().any():
         stats["rating_mean"] = round(df["rating"].mean(), 2)
-    if df["review_count"].notna().any():
+    if "review_count" in df.columns and df["review_count"].notna().any():
         stats["review_count_total"] = int(df["review_count"].sum())
         top = df.sort_values("review_count", ascending=False).head(1)
         if not top.empty:
             stats["most_reviewed_title"] = top.iloc[0].get("title")
-
-    if "price" in df.columns and df["price"].notna().sum() > 0:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        df["price"].dropna().plot(kind="hist", bins=15, ax=ax, color="#4C72B0", edgecolor="white")
-        ax.set_title("Price distribution")
-        ax.set_xlabel("Price ($)")
-        ax.set_ylabel("Number of products")
-        fig.tight_layout()
-        fig.savefig(os.path.join(report_dir, "price_distribution.png"), dpi=120)
-        plt.close(fig)
-
-    if {"price", "rating"}.issubset(df.columns) and df[["price", "rating"]].dropna().shape[0] > 1:
-        fig, ax = plt.subplots(figsize=(7, 4))
-        sub = df.dropna(subset=["price", "rating"])
-        ax.scatter(sub["price"], sub["rating"], alpha=0.6, color="#DD8452")
-        ax.set_title("Rating vs. price")
-        ax.set_xlabel("Price ($)")
-        ax.set_ylabel("Rating (out of 5)")
-        fig.tight_layout()
-        fig.savefig(os.path.join(report_dir, "rating_vs_price.png"), dpi=120)
-        plt.close(fig)
-
-    if "review_count" in df.columns and "title" in df.columns:
-        top_10 = df.dropna(subset=["review_count"]).sort_values("review_count", ascending=False).head(10)
-        if not top_10.empty:
-            fig, ax = plt.subplots(figsize=(8, 5))
-            labels = [t[:40] + ("…" if len(t) > 40 else "") for t in top_10["title"]]
-            ax.barh(labels[::-1], top_10["review_count"][::-1], color="#55A868")
-            ax.set_title("Top 10 most-reviewed products")
-            ax.set_xlabel("Number of reviews")
-            fig.tight_layout()
-            fig.savefig(os.path.join(report_dir, "top_reviewed.png"), dpi=120)
-            plt.close(fig)
 
     report_lines = [
         "# Amazon Scrape Analysis Report", "",
@@ -331,9 +252,7 @@ def analyze_and_report(df):
             f"- Total reviews across all products: {stats['review_count_total']}",
             f"- Most-reviewed product: {stats.get('most_reviewed_title')}", ""
         ])
-
-    with open(os.path.join(report_dir, "report.md"), "w", encoding="utf-8") as f:
-        f.write("\n".join(report_lines))
+    return "\n".join(report_lines)
 
 
 if run_button:
@@ -374,16 +293,9 @@ if run_button:
                         enriched.append(item)
                     time.sleep(random.uniform(3, 7))
 
-                status_text.info("Saving items to SQLite and exporting CSV...")
-                progress_bar.progress(0.8)
+                status_text.info("Saving items to session state...")
+                progress_bar.progress(0.9)
                 save_products(enriched, keyword)
-
-                df_temp = load_db_data()
-                if df_temp is not None:
-                    df_temp.to_csv(csv_path, index=False)
-                    status_text.info("Analyzing data and updating charts...")
-                    progress_bar.progress(0.9)
-                    analyze_and_report(df_temp)
 
                 status_text.success(f"🎉 Pipeline successfully completed! Scraped **{len(enriched)}** items.")
                 progress_bar.progress(1.0)
@@ -403,10 +315,14 @@ tab_analytics, tab_table, tab_report = st.tabs([
 
 with tab_analytics:
     if df is not None and len(df) > 0:
+        for col in ("price", "rating", "review_count"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
         n_products = len(df)
-        avg_price = df['price'].mean()
-        avg_rating = df['rating'].mean()
-        total_reviews = df['review_count'].sum()
+        avg_price = df['price'].mean() if 'price' in df.columns else None
+        avg_rating = df['rating'].mean() if 'rating' in df.columns else None
+        total_reviews = df['review_count'].sum() if 'review_count' in df.columns else None
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -422,26 +338,40 @@ with tab_analytics:
         st.subheader("Visual Market Distribution")
         col_c1, col_c2 = st.columns(2)
 
-        price_dist_path = os.path.join(report_dir, "price_distribution.png")
-        rating_price_path = os.path.join(report_dir, "rating_vs_price.png")
-        top_reviewed_path = os.path.join(report_dir, "top_reviewed.png")
-
         with col_c1:
-            if os.path.exists(price_dist_path):
-                st.image(price_dist_path, caption="Price Spread Histogram", width="stretch")
-            else:
-                st.info("Price distribution chart will display here once generated.")
+            if "price" in df.columns and df["price"].notna().sum() > 0:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                df["price"].dropna().plot(kind="hist", bins=15, ax=ax, color="#4C72B0", edgecolor="white")
+                ax.set_title("Price distribution")
+                ax.set_xlabel("Price ($)")
+                ax.set_ylabel("Number of products")
+                fig.tight_layout()
+                st.pyplot(fig)
+                plt.close(fig)
 
-            if os.path.exists(top_reviewed_path):
-                st.image(top_reviewed_path, caption="Top Reviewed Products", width="stretch")
-            else:
-                st.info("Popularity chart will display here once generated.")
+            if "review_count" in df.columns and "title" in df.columns:
+                top_10 = df.dropna(subset=["review_count"]).sort_values("review_count", ascending=False).head(10)
+                if not top_10.empty:
+                    fig, ax = plt.subplots(figsize=(8, 5))
+                    labels = [t[:40] + ("…" if len(t) > 40 else "") for t in top_10["title"]]
+                    ax.barh(labels[::-1], top_10["review_count"][::-1], color="#55A868")
+                    ax.set_title("Top 10 most-reviewed products")
+                    ax.set_xlabel("Number of reviews")
+                    fig.tight_layout()
+                    st.pyplot(fig)
+                    plt.close(fig)
 
         with col_c2:
-            if os.path.exists(rating_price_path):
-                st.image(rating_price_path, caption="Ratings vs. Price Scatter Plot", width="stretch")
-            else:
-                st.info("Ratings correlation chart will display here once generated.")
+            if {"price", "rating"}.issubset(df.columns) and df[["price", "rating"]].dropna().shape[0] > 1:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                sub = df.dropna(subset=["price", "rating"])
+                ax.scatter(sub["price"], sub["rating"], alpha=0.6, color="#DD8452")
+                ax.set_title("Rating vs. price")
+                ax.set_xlabel("Price ($)")
+                ax.set_ylabel("Rating (out of 5)")
+                fig.tight_layout()
+                st.pyplot(fig)
+                plt.close(fig)
     else:
         st.info("💡 Run the scraper using the sidebar panel to see analytics and metrics.")
 
@@ -474,11 +404,9 @@ with tab_table:
         st.info("💡 No database records found yet. Execute a scrape from the sidebar to populate the database.")
 
 with tab_report:
-    report_path = os.path.join(report_dir, "report.md")
-    if os.path.exists(report_path):
+    if df is not None and len(df) > 0:
         st.subheader("Generated Analysis Report")
-        with open(report_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        st.markdown(content)
+        report_content = generate_report_content(df.copy())
+        st.markdown(report_content)
     else:
         st.info("💡 No markdown analysis report exists yet. Run a scrape to generate the report.")
