@@ -56,7 +56,7 @@ def parse_search_results(html: str) -> list[dict]:
         asin = card.css('::attr(data-asin)').get()
         title = _clean_text(card.css("h2 span::text").get())
 
-        link = card.css("h2 a::attr(href)").get()
+        link = card.css("h2 a::attr(href)").get() or card.css("a.a-link-normal::attr(href)").get()
         url = (config.BASE_URL + link) if link else None
 
         price_text = card.css("span.a-price > span.a-offscreen::text").get()

@@ -95,5 +95,11 @@ class Storage:
         log.info("Exported %d rows to %s", len(rows), path)
         return path
 
+    def clear_all(self):
+        self.conn.execute("DELETE FROM products")
+        self.conn.commit()
+        log.info("Cleared all products from the database.")
+
     def close(self):
         self.conn.close()
+

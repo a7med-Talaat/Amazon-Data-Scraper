@@ -85,3 +85,12 @@ class TestStorage:
         store.export_csv(csv_path)
         # Should not raise, and file need not exist if there's nothing to write
         store.close()
+
+    def test_clear_all(self, tmp_path):
+        store = make_storage(tmp_path)
+        store.save_products(SAMPLE_PRODUCTS, keyword="wireless mouse")
+        assert len(store.fetch_all()) == 2
+        store.clear_all()
+        assert len(store.fetch_all()) == 0
+        store.close()
+

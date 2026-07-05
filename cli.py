@@ -58,6 +58,13 @@ def cmd_export(args):
     print(f"Exported to: {path}")
 
 
+def cmd_clear(args):
+    storage = Storage(db_path=args.db)
+    storage.clear_all()
+    storage.close()
+    print("Database cleared successfully.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Amazon search + product scraper toolkit")
     parser.add_argument("--db", default=config.DB_PATH, help="Path to SQLite database file")
@@ -79,7 +86,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--csv", default=config.CSV_PRODUCTS_PATH, help="CSV export path")
     p_export.set_defaults(func=cmd_export)
 
+    p_clear = sub.add_parser("clear", help="Clear all products from the database")
+    p_clear.set_defaults(func=cmd_clear)
+
     return parser
+
 
 
 def main():
